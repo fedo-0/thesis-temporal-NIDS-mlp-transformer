@@ -7,7 +7,6 @@ def uniform_undersampling_to_minority(df, attack_col='Attack'):
     
     initial_samples = len(df)
     
-    # Analisi distribuzione classi
     class_counts = df[attack_col].value_counts().sort_values(ascending=True)
     minority_class_name = class_counts.index[0]
     minority_class_count = class_counts.iloc[0]
@@ -23,7 +22,6 @@ def uniform_undersampling_to_minority(df, attack_col='Attack'):
     print(f"\nClasse minoritaria: '{minority_class_name}' con {minority_class_count:,} campioni")
     print(f"Target finale per ogni classe: {minority_class_count:,} campioni")
     
-    # Calcola quanti campioni rimuovere per classe
     samples_to_remove_per_class = {}
     total_samples_to_remove = 0
     
@@ -47,7 +45,6 @@ def uniform_undersampling_to_minority(df, attack_col='Attack'):
     print(f"\nTotale campioni da rimuovere: {total_samples_to_remove:,}")
     print(f"Riduzione totale dataset: {(total_samples_to_remove/initial_samples)*100:.2f}%")
     
-    # Applica undersampling uniforme per ogni classe
     indices_to_keep = []
     
     for class_name in class_counts.index:
@@ -56,11 +53,9 @@ def uniform_undersampling_to_minority(df, attack_col='Attack'):
         current_count = len(class_indices)
         
         if current_count <= minority_class_count:
-            # Mantieni tutti i campioni (classe minoritaria)
             selected_indices = class_indices
             print(f"  {class_name}: mantieni tutti {len(selected_indices):,} campioni")
         else:
-            # Undersampling uniforme mantenendo distribuzione temporale
             step = current_count / minority_class_count
             selected_indices = []
             
@@ -73,14 +68,11 @@ def uniform_undersampling_to_minority(df, attack_col='Attack'):
         
         indices_to_keep.extend(selected_indices)
     
-    # Mantieni ordine temporale originale
     indices_to_keep.sort()
     
-    # Crea dataset sottocampionato
     df_undersampled = df.loc[indices_to_keep].copy()
     df_undersampled.reset_index(drop=True, inplace=True)
     
-    # Verifica risultati finali
     final_samples = len(df_undersampled)
     final_class_counts = df_undersampled[attack_col].value_counts().sort_values(ascending=True)
     
@@ -95,14 +87,12 @@ def uniform_undersampling_to_minority(df, attack_col='Attack'):
         status = "✅" if count == expected_count else "⚠️"
         print(f"  {status} {class_name}: {count:,} ({percentage:.2f}%)")
     
-    # Verifica bilanciamento
     unique_counts = final_class_counts.unique()
     if len(unique_counts) == 1 and unique_counts[0] == minority_class_count:
         print(f"✅ Dataset perfettamente bilanciato: tutte le classi hanno {minority_class_count:,} campioni")
     else:
         print(f"⚠️  Dataset non perfettamente bilanciato - verificare la logica")
     
-    # Verifica ordine temporale (assumendo che indici crescenti = ordine temporale)
     if all(df_undersampled.index[i] <= df_undersampled.index[i+1] for i in range(len(df_undersampled)-1)):
         print("✅ Ordine temporale mantenuto")
     else:
@@ -122,7 +112,6 @@ def proportional_temporal_undersampling(df, attack_col='Attack', target_percenta
     initial_samples = len(df)
     target_samples = int(initial_samples * target_percentage)
     
-    # Analisi distribuzione classi originale
     class_counts = df[attack_col].value_counts().sort_index()
     class_proportions = class_counts / initial_samples
     
@@ -134,15 +123,12 @@ def proportional_temporal_undersampling(df, attack_col='Attack', target_percenta
         target_count = int(target_samples * proportion)
         print(f"  {class_name}: {proportion:.1%} ({original_count:,} → {target_count:,})")
     
-    # Calcola step per ogni classe per distribuzione temporale uniforme
     selected_indices = []
     
     for class_name, original_count in class_counts.items():
-        # Trova tutti gli indici per questa classe
         class_mask = df[attack_col] == class_name
-        class_indices = df[class_mask].index.tolist()  # Già in ordine temporale
+        class_indices = df[class_mask].index.tolist()
         
-        # Calcola quanti campioni tenere per questa classe
         target_class_count = int(target_samples * class_proportions[class_name])
         
         if target_class_count == 0:
@@ -150,11 +136,9 @@ def proportional_temporal_undersampling(df, attack_col='Attack', target_percenta
             continue
         
         if target_class_count >= original_count:
-            # Mantieni tutti i campioni se il target è >= dell'originale
             class_selected = class_indices
             print(f"  ✅ {class_name}: mantieni tutti {len(class_selected):,} campioni")
         else:
-            # Campionamento uniforme nel tempo
             step = len(class_indices) / target_class_count
             class_selected = []
             
@@ -167,14 +151,11 @@ def proportional_temporal_undersampling(df, attack_col='Attack', target_percenta
         
         selected_indices.extend(class_selected)
     
-    # Mantieni ordine temporale globale
     selected_indices.sort()
     
-    # Crea dataset sottocampionato
     df_undersampled = df.loc[selected_indices].copy()
     df_undersampled.reset_index(drop=True, inplace=True)
     
-    # Verifica risultati
     final_samples = len(df_undersampled)
     final_class_counts = df_undersampled[attack_col].value_counts().sort_index()
     final_proportions = final_class_counts / final_samples
@@ -196,10 +177,9 @@ def proportional_temporal_undersampling(df, attack_col='Attack', target_percenta
         else:
             print(f"{class_name:<20} {class_proportions[class_name]:.1%}      0.0%       -")
     
-    # Verifica ordine temporale
     if all(selected_indices[i] <= selected_indices[i+1] for i in range(len(selected_indices)-1)):
-        print("✅ Ordine temporale mantenuto")
+        print("Ordine temporale mantenuto")
     else:
-        print("⚠️  Ordine temporale compromesso")
+        print("WARNING: Ordine temporale compromesso")
     
     return df_undersampled, initial_samples - final_samples

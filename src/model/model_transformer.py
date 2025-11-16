@@ -9,7 +9,6 @@ from utilities.logging_config import setup_logging
 from torch.utils.data import DataLoader, TensorDataset
 from sklearn.utils.class_weight import compute_class_weight
 
-# Setup logging
 setup_logging()
 logger = logging.getLogger(__name__)
 
@@ -26,17 +25,11 @@ class PositionalEncoding(nn.Module):
         
         pe[:, 0::2] = torch.sin(position * div_term)
         pe[:, 1::2] = torch.cos(position * div_term)
-        pe = pe.unsqueeze(0)  # Shape: (1, max_len, d_model)
+        pe = pe.unsqueeze(0)
         
         self.register_buffer('pe', pe)
     
     def forward(self, x):
-        """
-        Args:
-            x: Tensor shape (batch_size, seq_len, d_model)
-        Returns:
-            x + positional encoding
-        """
         seq_len = x.size(1)
         return x + self.pe[:, :seq_len, :]
 
@@ -48,7 +41,6 @@ class EmbeddingLayer(nn.Module):
         self.vocab_sizes = vocab_sizes
         self.embed_dim = embed_dim
         
-        # Crea embedding layer per ogni variabile categorica
         self.embeddings = nn.ModuleDict()
         for col_name, vocab_size in vocab_sizes.items():
             self.embeddings[col_name] = nn.Embedding(vocab_size, embed_dim)
@@ -58,12 +50,6 @@ class EmbeddingLayer(nn.Module):
             logger.info(f"  {col_name}: {vocab_size} -> {embed_dim}")
     
     def forward(self, categorical_inputs):
-        """
-        Args:
-            categorical_inputs: Dict {col_name: tensor(batch_size, seq_len)}
-        Returns:
-            embedded: Tensor (batch_size, seq_len, num_categorical * embed_dim)
-        """
         embedded_features = []
         
         for col_name, col_tensor in categorical_inputs.items():
@@ -74,7 +60,6 @@ class EmbeddingLayer(nn.Module):
         if embedded_features:
             return torch.cat(embedded_features, dim=-1)
         else:
-            # Se non ci sono features categoriche, restituisci tensor vuoto
             batch_size, seq_len = next(iter(categorical_inputs.values())).shape
             return torch.zeros(batch_size, seq_len, 0, device=next(iter(categorical_inputs.values())).device)
 
@@ -88,18 +73,15 @@ class NetworkTrafficTransformer(nn.Module):
         self.feature_groups = feature_groups
         self.vocab_sizes = vocab_sizes or {}
         
-        # Parametri architettura
         self.d_model = config['d_model']
         self.nhead = config['nhead']
         self.num_layers = config['num_layers']
         self.dropout = config['dropout']
         self.embed_dim = config.get('categorical_embed_dim', 16)
         
-        # Dimensioni features
         self.num_numeric = len(feature_groups['numeric']['columns'])
         self.num_categorical = len(feature_groups['categorical']['columns'])
         
-        # Layer di embedding per variabili categoriche
         if self.num_categorical > 0 and self.vocab_sizes:
             self.categorical_embedding = EmbeddingLayer(self.vocab_sizes, self.embed_dim)
             self.categorical_dim = self.num_categorical * self.embed_dim
@@ -107,16 +89,12 @@ class NetworkTrafficTransformer(nn.Module):
             self.categorical_embedding = None
             self.categorical_dim = 0
         
-        # Dimensione input totale
         self.input_dim = self.num_numeric + self.categorical_dim
         
-        # Proiezione input -> d_model
         self.input_projection = nn.Linear(self.input_dim, self.d_model)
         
-        # Positional encoding
         self.pos_encoder = PositionalEncoding(self.d_model, max_len=512)
         
-        # Transformer encoder
         encoder_layer = nn.TransformerEncoderLayer(
             d_model=self.d_model,
             nhead=self.nhead,
@@ -127,7 +105,6 @@ class NetworkTrafficTransformer(nn.Module):
         )
         self.transformer_encoder = nn.TransformerEncoder(encoder_layer, num_layers=self.num_layers)
         
-        # Layer di classificazione
         self.classifier = nn.Sequential(
             nn.Linear(self.d_model, self.d_model // 2),
             nn.ReLU(),
@@ -135,13 +112,10 @@ class NetworkTrafficTransformer(nn.Module):
             nn.Linear(self.d_model // 2, n_classes)
         )
         
-        # Layer Norm finale
         self.layer_norm = nn.LayerNorm(self.d_model)
         
-        # Inizializzazione pesi
         self.apply(self._init_weights)
         
-        # Log informazioni modello
         total_params = sum(p.numel() for p in self.parameters())
         logger.info(f"Transformer creato:")
         logger.info(f"  Parametri totali: {total_params:,}")
@@ -163,44 +137,25 @@ class NetworkTrafficTransformer(nn.Module):
             torch.nn.init.zeros_(module.bias)
     
     def forward(self, numeric_features, categorical_features=None):
-        """
-        Forward pass del Transformer
-        
-        Args:
-            numeric_features: Tensor (batch_size, seq_len, num_numeric)
-            categorical_features: Dict {col_name: Tensor(batch_size, seq_len)} o None
-            
-        Returns:
-            output: Tensor (batch_size, n_classes) - logits per classificazione
-        """
         batch_size, seq_len, _ = numeric_features.shape
         
-        # Processa features categoriche se presenti
         if self.categorical_embedding is not None and categorical_features is not None:
             categorical_embedded = self.categorical_embedding(categorical_features)
-            # Combina numeric e categorical
             combined_features = torch.cat([numeric_features, categorical_embedded], dim=-1)
         else:
             combined_features = numeric_features
         
-        # Proiezione a d_model
-        x = self.input_projection(combined_features)  # (batch_size, seq_len, d_model)
+        x = self.input_projection(combined_features)
         
-        # Positional encoding
         x = self.pos_encoder(x)
         
-        # Transformer encoder
-        x = self.transformer_encoder(x)  # (batch_size, seq_len, d_model)
+        x = self.transformer_encoder(x)
         
-        # Layer norm
         x = self.layer_norm(x)
         
-        # Usa solo l'ultimo timestep per classificazione
-        # (simula il comportamento "causal" per intrusion detection)
-        last_hidden = x[:, -1, :]  # (batch_size, d_model)
+        last_hidden = x[:, -1, :]
         
-        # Classificazione
-        output = self.classifier(last_hidden)  # (batch_size, n_classes)
+        output = self.classifier(last_hidden)
         
         return output
 
@@ -210,10 +165,8 @@ class SlidingWindowDataset(torch.utils.data.Dataset):
         self.y = y
         self.window_size = window_size
         
-        # Genera tutti gli indici possibili per le finestre
         self.window_starts = list(range(len(X) - window_size + 1))
         
-        # Mescola gli indici per simulare il RandomSlidingWindowSampler
         import random
         random.seed(seed)
         random.shuffle(self.window_starts)
@@ -222,13 +175,12 @@ class SlidingWindowDataset(torch.utils.data.Dataset):
         return len(self.window_starts)
     
     def __getitem__(self, idx):
-        # Ottieni l'indice di partenza per questa finestra
         start_idx = self.window_starts[idx]
         end_idx = start_idx + self.window_size
         
-        # Crea la sequenza
+        # Crea la seqKuenza
         sequence = torch.FloatTensor(self.X[start_idx:end_idx])
-        target = torch.LongTensor([self.y[end_idx - 1]])[0]  # Target dell'ultimo elemento
+        target = torch.LongTensor([self.y[end_idx - 1]])[0]
         
         return sequence, target
     
@@ -283,7 +235,6 @@ class NetworkTrafficDatasetTransformer:
                 'categorical_embed_dim': 16
             }
         
-        # Carica metadati temporali
         with open(self.metadata_path, 'r') as f:
             self.temporal_metadata = json.load(f)
             
@@ -293,7 +244,6 @@ class NetworkTrafficDatasetTransformer:
         self.feature_groups = self.temporal_metadata.get('feature_groups', {})
         self.sequence_length = self.temporal_metadata['temporal_config']['sequence_length']
         
-        # Estrai vocab sizes per embedding
         if 'embedding_config' in self.temporal_metadata:
             vocab_stats = self.temporal_metadata['embedding_config'].get('vocab_stats', {})
             self.vocab_sizes = {col: stats['vocab_size'] for col, stats in vocab_stats.items()}
@@ -329,7 +279,6 @@ class NetworkTrafficDatasetTransformer:
         self.X_test = test_df[self.feature_columns].values.astype(np.float32)
         self.y_test = test_df['multiclass_target'].values.astype(np.int64)
         
-        # Calcola class weights
         try:
             class_weights = compute_class_weight(
                 'balanced',
@@ -348,7 +297,6 @@ class NetworkTrafficDatasetTransformer:
         numeric_cols = self.feature_groups.get('numeric', {}).get('columns', [])
         categorical_cols = self.feature_groups.get('categorical', {}).get('columns', [])
         
-        # Trova indici delle colonne (IDENTICO a prima)
         numeric_indices = []
         categorical_indices = []
         
@@ -358,14 +306,12 @@ class NetworkTrafficDatasetTransformer:
             elif col in categorical_cols:
                 categorical_indices.append(i)
         
-        # Estrai features numeriche
         if numeric_indices:
             numeric_features = sequences[:, :, numeric_indices]
         else:
             batch_size, seq_len = sequences.shape[0], sequences.shape[1]
             numeric_features = torch.zeros(batch_size, seq_len, 0, device=sequences.device)
         
-        # Estrai features categoriche
         categorical_features = {}
         for i, col in enumerate(categorical_cols):
             if col in self.feature_columns:
@@ -380,17 +326,15 @@ class NetworkTrafficDatasetTransformer:
         use_cuda = torch.cuda.is_available()
         
         
-        # Crea dataset
         train_dataset = SlidingWindowDataset(self.X_train, self.y_train, window_size, seed)
         val_dataset = SlidingWindowDataset(self.X_val, self.y_val, window_size, seed + 1) 
         test_dataset = SlidingWindowDataset(self.X_test, self.y_test, window_size, seed + 2)
         
-        # DataLoader standard con multiprocessing
         train_loader = DataLoader(
             train_dataset,
             batch_size=batch_size,
-            shuffle=True,  # Shuffle aggiuntivo
-            num_workers=8,  # Multiprocessing abilitato!
+            shuffle=True,
+            num_workers=8,
             pin_memory=use_cuda,
             persistent_workers=True,
             prefetch_factor=2,
@@ -419,7 +363,6 @@ class NetworkTrafficDatasetTransformer:
             drop_last=False
         )
         
-        # Wrapper per gestire il reshuffling tra epoche
         class EpochAwareDataLoader:
             def __init__(self, dataloader, dataset):
                 self.dataloader = dataloader
@@ -427,16 +370,14 @@ class NetworkTrafficDatasetTransformer:
                 self.epoch = 0
                 
             def __iter__(self):
-                # Rimescola il dataset ad ogni epoca (simula RandomSlidingWindowSampler)
                 if hasattr(self.dataset, 'reshuffle'):
-                    self.dataset.reshuffle(self.epoch + 42)  # Seed diverso per ogni epoca
+                    self.dataset.reshuffle(self.epoch + 42)
                     self.epoch += 1
                 return iter(self.dataloader)
             
             def __len__(self):
                 return len(self.dataloader)
         
-        # Wrap dei loader per il reshuffling
         train_loader_wrapped = EpochAwareDataLoader(train_loader, train_dataset)
         val_loader_wrapped = EpochAwareDataLoader(val_loader, val_dataset)
         test_loader_wrapped = EpochAwareDataLoader(test_loader, test_dataset)

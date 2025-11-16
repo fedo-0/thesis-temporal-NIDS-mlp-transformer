@@ -156,6 +156,7 @@ def plot_test_set_per_class_metrics(predictions, targets, class_names, save_path
 
 def save_individual_test_plots(predictions, targets, class_names, base_save_path):
     
+    # Calcola metriche
     precision_per_class, recall_per_class, f1_per_class, support_per_class = precision_recall_fscore_support(
         targets, predictions, average=None, zero_division=0
     )
@@ -163,9 +164,11 @@ def save_individual_test_plots(predictions, targets, class_names, base_save_path
         targets, predictions, average='weighted', zero_division=0
     )
     
+    # Setup colori e posizioni
     x_pos = np.arange(len(class_names))
     colors = cm.Set3(np.linspace(0, 1, len(class_names)))
     
+    # 1. F1 Score per classe + Aggregated
     plt.figure(figsize=(12, 8))
     x_pos_agg = np.arange(len(class_names) + 1)
     f1_with_agg = np.append(f1_per_class, f1_weighted)
@@ -187,6 +190,7 @@ def save_individual_test_plots(predictions, targets, class_names, base_save_path
     plt.close()
     logger.info(f"Test F1 scores plot salvato in: {f1_path}")
     
+    # 2-4. Altri grafici (Precision, Recall, Support)
     metrics = [
         ('Precision', precision_per_class, '_test_precision.png'),
         ('Recall', recall_per_class, '_test_recall.png'),

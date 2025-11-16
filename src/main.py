@@ -34,29 +34,29 @@ def split (input_path: str, output_dir: str):
         min_samples_per_class=min_samples
     )
 
-    logger.info("✅ Clean e Split del dataset completato con successo!")
+    logger.info("Clean e Split del dataset completato con successo!")
 
 def prepare_mlp(input_path: str, output_dir: str):
     logger.info("Preparing data for MLP ARCHITECTURE...")
     try:
-        # esecuzione del preprocessing multiclasse MLP
+        """ esecuzione del preprocessing multiclasse MLP """
         df_train, df_val, df_test, scaler, freq_mappings, label_encoder, class_mapping = preprocess_dataset_multiclass(
             clean_split_dir=input_path,
             config_path="config/dataset.json",
             output_dir=output_dir
         )
-        logger.info("✅ Preprocessing completato con successo!")
+        logger.info("Preprocessing completato con successo!")
     except FileNotFoundError as e:
-        logger.info(f"❌ Errore: File non trovato - {e}")
+        logger.info(f"ERROR: File non trovato - {e}")
     except ValueError as e:
-        logger.info(f"❌ Errore nei dati: {e}")
+        logger.info(f"ERROR: Errore nei dati: {e}")
     except Exception as e:
-        logger.info(f"❌ Errore imprevisto: {e}")
+        logger.info(f"ERROR: Errore imprevisto: {e}")
 
 def prepare_transformer(input_path: str, output_dir: str):
     logger.info("Preparing data for TRANSFORMER ARCHITECTURE...")
     try:
-        # esecuzione del preprocessing multiclasse TRANSFORMER
+        """ esecuzione del preprocessing multiclasse TRANSFORMER """
         preprocess_dataset_transformer(
             clean_split_dir=input_path,
             config_path="config/dataset.json",
@@ -67,28 +67,28 @@ def prepare_transformer(input_path: str, output_dir: str):
             min_freq_categorical=10,
             max_vocab_size=10000
         )
-        logger.info("✅ Preprocessing completato con successo!")
+        logger.info("Preprocessing completato con successo!")
     except FileNotFoundError as e:
-        logger.info(f"❌ Errore: File non trovato - {e}")
+        logger.info(f"ERROR: File non trovato - {e}")
     except ValueError as e:
-        logger.info(f"❌ Errore nei dati: {e}")
+        logger.info(f"ERROR nei dati: {e}")
     except Exception as e:
-        logger.info(f"❌ Errore imprevisto: {e}")
+        logger.info(f"ERROR imprevisto: {e}")
 
 def run_binclassifier (model_size: str):
     logger.info("Preparando il classificatore binario...")
     main_pipeline_bin()
-    logger.info("✅ Training completato con successo!")
+    logger.info("Training completato con successo!")
 
 def run_multiclassifier (model_size:str):
     logger.info("Preparando il classificatore multiclasse...")
     main_pipeline_multiclass(model_size="small")
-    logger.info("✅ Training completato con successo!")
+    logger.info("Training completato con successo!")
 
 def run_transformer (model_size:str):
     logger.info("Preparando il trasformer per la classificazione multiclasse...")
     main_pipeline_transformer(model_size="small", window_size=8)
-    logger.info("✅ Training completato con successo!")
+    logger.info("Training completato con successo!")
 
 def run_all(model_size: str):
     logger.info("> > > > > > TON_V3")
@@ -97,7 +97,7 @@ def run_all(model_size: str):
     run_transformer("small")
     prepare_mlp("resources/datasets", "resources/datasets")
     run_multiclassifier("small")
-    logger.info("✅ terminato addestramento sul dataset TONV3")
+    logger.info("OK: terminato addestramento sul dataset TONV3")
 
     logger.info("> > > > > > NB_15")
     split("resources/datasets/NF-UNSW-NB15-v3.csv", "resources/datasets")
@@ -105,7 +105,7 @@ def run_all(model_size: str):
     run_transformer("small")
     prepare_mlp("resources/datasets", "resources/datasets")
     run_multiclassifier("small")
-    logger.info("✅ terminato addestramento sul dataset NB_15")
+    logger.info("OK: terminato addestramento sul dataset NB_15")
     
     logger.info("> > > > > > CIC_2018")
     split("resources/datasets/cic_2018_v3.csv", "resources/datasets")
@@ -113,16 +113,16 @@ def run_all(model_size: str):
     run_transformer("small")
     prepare_mlp("resources/datasets", "resources/datasets")
     run_multiclassifier("small")
-    logger.info("✅ terminato addestramento sul dataset CIC_2018")
+    logger.info("OK: terminato addestramento sul dataset CIC_2018")
 
 def test_plot (trans: str, mlp: str):
     logger.info("Testing and Plot delle metriche sul test set")
     logger.info(f"Modello: {mlp}")
     test_and_plot_mlp(mlp)
-    logger.info("✅ Terminato con successo la versione MLP")
+    logger.info("OK: Terminato con successo la versione MLP")
     logger.info(f"Modello: {trans}")
     test_and_plot_transformer(trans)
-    logger.info("✅ Terminato con successo la versione TRANSFORMER")
+    logger.info("OK: Terminato con successo la versione TRANSFORMER")
 
 if __name__ == "__main__":
     parser = ArgumentParser("parser")

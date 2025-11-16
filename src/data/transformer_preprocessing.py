@@ -20,18 +20,13 @@ def create_embedding_mappings(df_train, categorical_columns, min_freq=10, max_vo
     
     for col in categorical_columns:
         if col in df_train.columns:
-            # Analizza frequenze
             value_counts = df_train[col].value_counts()
             
-            # Filtra valori troppo rari
             frequent_values = value_counts[value_counts >= min_freq]
             
-            # Limita dimensione vocabolario se necessario
             if len(frequent_values) > max_vocab_size:
                 frequent_values = frequent_values.nlargest(max_vocab_size)
             
-            # Crea mapping: valore -> indice
-            # 0 riservato per valori sconosciuti/rari (UNK token)
             vocab_to_idx = {'<UNK>': 0}
             for idx, (value, count) in enumerate(frequent_values.items(), 1):
                 vocab_to_idx[value] = idx
@@ -57,7 +52,6 @@ def apply_embedding_mappings(df, embedding_mappings):
     
     for col, vocab_mapping in embedding_mappings.items():
         if col in df_mapped.columns:
-            # Mappa valori conosciuti, usa 0 (<UNK>) per valori sconosciuti
             df_mapped[col] = df_mapped[col].map(vocab_mapping).fillna(0).astype(int)
     
     return df_mapped
@@ -71,7 +65,6 @@ def normalize_numeric_features(df_train, df_val, df_test, numeric_columns):
     if not numeric_cols_present:
         return df_train.copy(), df_val.copy(), df_test.copy(), {}, numeric_cols_present
     
-    # Calcola min e max dal training set
     normalization_params = {}
     
     df_train_norm = df_train.copy()
@@ -82,7 +75,6 @@ def normalize_numeric_features(df_train, df_val, df_test, numeric_columns):
         min_val = df_train[col].min()
         max_val = df_train[col].max()
         
-        # Evita divisione per zero
         if max_val == min_val:
             print(f"Colonna {col} ha valore costante: {min_val}")
             normalization_params[col] = {'min': float(min_val), 'max': float(max_val), 'range': 1.0}
@@ -94,12 +86,10 @@ def normalize_numeric_features(df_train, df_val, df_test, numeric_columns):
             'range': float(max_val - min_val)
         }
         
-        # Applica Min-Max scaling: (x - min) / (max - min)
         df_train_norm[col] = (df_train[col] - min_val) / (max_val - min_val)
         df_val_norm[col] = (df_val[col] - min_val) / (max_val - min_val)
         df_test_norm[col] = (df_test[col] - min_val) / (max_val - min_val)
         
-        # Clamp valori fuori range per val/test
         df_val_norm[col] = df_val_norm[col].clip(0, 1)
         df_test_norm[col] = df_test_norm[col].clip(0, 1)
     
@@ -129,15 +119,12 @@ def create_multiclass_encoding(df_train, attack_col='Attack', label_col='Label')
     
     print(f"Classi trovate nel training set: {n_classes}")
     
-    # Ordina le classi per frequenza
     class_counts = df_train[attack_col].value_counts()
     sorted_classes = class_counts.index.tolist()
     
-    # Crea LabelEncoder
     label_encoder = LabelEncoder()
     label_encoder.fit(sorted_classes)
     
-    # Mostra mapping
     print(f"\nMapping classi (ordinate per frequenza):")
     class_mapping = {}
     for i, class_name in enumerate(label_encoder.classes_):
@@ -208,7 +195,6 @@ def preprocess_dataset_transformer(clean_split_dir, config_path, output_dir,
     print(f"- Colonne categoriche: {len(categorical_columns)}")
     print(f"- Lunghezza sequenze: {sequence_length}")
     
-    # === FASE 1: CARICAMENTO DATASET ORDINATI TEMPORALMENTE ===
     print(f"\n=== FASE 1: CARICAMENTO DATASET ORDINATI ===")
     
     train_path = os.path.join(clean_split_dir, "train.csv")
@@ -245,7 +231,6 @@ def preprocess_dataset_transformer(clean_split_dir, config_path, output_dir,
 
     feature_groups = create_feature_groups(feature_columns, numeric_columns, categorical_columns)
     
-    # === FASE 2: CREAZIONE ENCODING MULTICLASS ===
     print(f"\n=== FASE 2: CREAZIONE ENCODING MULTICLASS ===")
     
     label_encoder, class_mapping = create_multiclass_encoding(train_data, attack_col, label_col)
@@ -255,15 +240,12 @@ def preprocess_dataset_transformer(clean_split_dir, config_path, output_dir,
     val_data_encoded = apply_multiclass_encoding(val_data, label_encoder, attack_col)
     test_data_encoded = apply_multiclass_encoding(test_data, label_encoder, attack_col)
 
-    # === FASE 3: PREPROCESSING FEATURES ===
     print(f"\n=== FASE 3: PREPROCESSING FEATURES ===")
     
-    # Separa features dai dati encoded
     X_train = train_data_encoded[feature_columns].copy()
     X_val = val_data_encoded[feature_columns].copy()
     X_test = test_data_encoded[feature_columns].copy()
     
-    # 1. Creazione mappings per embedding (variabili categoriche)
     print("\nCreazione mappings per embedding categorici...")
     embedding_mappings, vocab_stats = create_embedding_mappings(
         X_train, categorical_columns, min_freq=min_freq_categorical, max_vocab_size=max_vocab_size
@@ -275,7 +257,6 @@ def preprocess_dataset_transformer(clean_split_dir, config_path, output_dir,
     
     print(f"- Vocabolari creati: {len(embedding_mappings)}")
     
-    # 2. Normalizzazione features numeriche
     print("\nNormalizzazione Min-Max per features numeriche...")
     X_train_processed, X_val_processed, X_test_processed, normalization_params, numeric_cols_present = normalize_numeric_features(
         X_train_embedded, X_val_embedded, X_test_embedded, numeric_columns
@@ -283,7 +264,6 @@ def preprocess_dataset_transformer(clean_split_dir, config_path, output_dir,
     
     print(f"- Features numeriche normalizzate: {len(numeric_cols_present)}")
 
-    # === FASE 4: SALVATAGGIO DATASET PROCESSATI (SENZA SEQUENZE) ===
     print(f"\n=== FASE 4: SALVATAGGIO DATASET PROCESSATI ===")
     
     os.makedirs(output_dir, exist_ok=True)
@@ -292,20 +272,6 @@ def preprocess_dataset_transformer(clean_split_dir, config_path, output_dir,
     val_processed_path = os.path.join(output_dir, "val_transformer_processed.csv")
     test_processed_path = os.path.join(output_dir, "test_transformer_processed.csv")
     
-    """
-    train_final = pd.concat([X_train_processed, train_data_encoded[['multiclass_target']]], axis=1)
-    val_final = pd.concat([X_val_processed, val_data_encoded[['multiclass_target']]], axis=1)
-    test_final = pd.concat([X_test_processed, test_data_encoded[['multiclass_target']]], axis=1)
-    
-    train_final.to_csv(train_processed_path, index=False)
-    val_final.to_csv(val_processed_path, index=False)
-    test_final.to_csv(test_processed_path, index=False)
-
-    print(f"Dataset processati salvati:")
-    print(f"- Training: {train_processed_path} ({len(train_final):,} campioni)")
-    print(f"- Validation: {val_processed_path} ({len(val_final):,} campioni)")
-    print(f"- Test: {test_processed_path} ({len(test_final):,} campioni)")
-    """
     X_train_processed['multiclass_target'] = train_data_encoded['multiclass_target'].values
     X_val_processed['multiclass_target'] = val_data_encoded['multiclass_target'].values  
     X_test_processed['multiclass_target'] = test_data_encoded['multiclass_target'].values
@@ -319,10 +285,8 @@ def preprocess_dataset_transformer(clean_split_dir, config_path, output_dir,
     print(f"- Validation: {val_processed_path} ({len(X_val_processed):,} campioni)")
     print(f"- Test: {test_processed_path} ({len(X_test_processed):,} campioni)")
     
-    # === FASE 5: SALVATAGGIO METADATI ===
     print(f"\n=== FASE 5: SALVATAGGIO METADATI ===")
     
-    # Metadati per Transformer con sampler
     transformer_metadata = {
         'architecture': 'Temporal_Transformer_with_Sampler',
         'temporal_config': {

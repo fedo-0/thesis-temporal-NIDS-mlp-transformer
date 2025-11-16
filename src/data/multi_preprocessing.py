@@ -62,15 +62,12 @@ def create_multiclass_encoding(df_train, attack_col='Attack', label_col='Label')
     
     print(f"Classi trovate nel training set: {n_classes}")
     
-    # Ordina le classi per frequenza
     class_counts = df_train[attack_col].value_counts()
     sorted_classes = class_counts.index.tolist()
     
-    # Crea LabelEncoder
     label_encoder = LabelEncoder()
     label_encoder.fit(sorted_classes)
     
-    # Mostra mapping
     print(f"\nMapping classi (ordinate per frequenza):")
     class_mapping = {}
     for i, class_name in enumerate(label_encoder.classes_):
@@ -132,7 +129,6 @@ def preprocess_dataset_multiclass(clean_split_dir, config_path, output_dir,
     print("Input: Dataset già puliti e divisi da split.py")
     print("Output: Dataset processati per architettura MLP")
     
-    # Carica configurazione
     config = load_dataset_config(config_path)
     numeric_columns = config['numeric_columns']
     categorical_columns = config['categorical_columns']
@@ -141,19 +137,16 @@ def preprocess_dataset_multiclass(clean_split_dir, config_path, output_dir,
     print(f"- Colonne numeriche: {len(numeric_columns)}")
     print(f"- Colonne categoriche: {len(categorical_columns)}")
     
-    # === FASE 1: CARICAMENTO DATASET PULITI ===
     print(f"\n=== FASE 1: CARICAMENTO DATASET PULITI ===")
     
     train_path = os.path.join(clean_split_dir, "train.csv")
     val_path = os.path.join(clean_split_dir, "val.csv")
     test_path = os.path.join(clean_split_dir, "test.csv")
     
-    # Verifica esistenza file
     for path, name in [(train_path, "train"), (val_path, "val"), (test_path, "test")]:
         if not os.path.exists(path):
             raise FileNotFoundError(f"File {name} non trovato: {path}")
     
-    # Carica dataset
     print("Caricamento dataset...")
     train_data = pd.read_csv(train_path)
     val_data = pd.read_csv(val_path)
@@ -163,32 +156,26 @@ def preprocess_dataset_multiclass(clean_split_dir, config_path, output_dir,
     print(f"- Validation: {val_data.shape[0]:,} campioni, {val_data.shape[1]} colonne")
     print(f"- Test: {test_data.shape[0]:,} campioni, {test_data.shape[1]} colonne")
     
-    # Verifica colonne target
     for df_name, df in [("train", train_data), ("val", val_data), ("test", test_data)]:
         if label_col not in df.columns:
             raise ValueError(f"Colonna label '{label_col}' non trovata nel dataset {df_name}!")
         if attack_col not in df.columns:
             raise ValueError(f"Colonna attack '{attack_col}' non trovata nel dataset {df_name}!")
     
-    # Identifica features disponibili
     expected_features = numeric_columns + categorical_columns
     feature_columns = [col for col in expected_features if col in train_data.columns]
     
     print(f"\nFeatures utilizzate: {len(feature_columns)} di {len(expected_features)} configurate")
     
-    # === FASE 2: CREAZIONE ENCODING MULTICLASS ===
     print(f"\n=== FASE 2: CREAZIONE ENCODING MULTICLASS ===")
     
-    # Crea encoding basato solo su training set
     label_encoder, class_mapping = create_multiclass_encoding(train_data, attack_col, label_col)
     
-    # Applica encoding a tutti i set
     print(f"\nApplicazione encoding...")
     train_data_encoded = apply_multiclass_encoding(train_data, label_encoder, attack_col)
     val_data_encoded = apply_multiclass_encoding(val_data, label_encoder, attack_col)
     test_data_encoded = apply_multiclass_encoding(test_data, label_encoder, attack_col)
     
-    # === FASE 3: SEPARAZIONE FEATURES E TARGET ===
     print(f"\n=== FASE 3: SEPARAZIONE FEATURES E TARGET ===")
     
     X_train = train_data_encoded[feature_columns].copy()
@@ -202,10 +189,8 @@ def preprocess_dataset_multiclass(clean_split_dir, config_path, output_dir,
     print(f"Features estratte: {X_train.shape[1]} colonne")
     print(f"Target estratti: multiclass_target ({len(label_encoder.classes_)} classi)")
     
-    # === FASE 4: PREPROCESSING FEATURES PER MLP ===
     print(f"\n=== FASE 4: PREPROCESSING FEATURES PER MLP ===")
     
-    # 1. Frequency encoding per variabili categoriche
     print("Applicazione frequency encoding...")
     freq_mappings = frequency_encoding_fit(X_train, categorical_columns)
     
@@ -215,16 +200,13 @@ def preprocess_dataset_multiclass(clean_split_dir, config_path, output_dir,
     
     print(f"- Colonne categoriche processate: {len([col for col in categorical_columns if col in freq_mappings])}")
     
-    # 2. Standard scaling per tutte le features (numeriche + categoriche encoded)
     print("Applicazione Standard Scaling...")
     scaler, numeric_cols_present = standard_scaling_fit(X_train_encoded, numeric_columns)
     
-    # Scala anche le colonne categoriche encoded per MLP
     categorical_cols_present = [col for col in categorical_columns if col in X_train_encoded.columns]
     all_cols_to_scale = numeric_cols_present + categorical_cols_present
     
     if all_cols_to_scale:
-        # Re-fit scaler su tutte le colonne (numeriche + categoriche encoded)
         scaler_full = StandardScaler()
         scaler_full.fit(X_train_encoded[all_cols_to_scale])
         
@@ -244,10 +226,8 @@ def preprocess_dataset_multiclass(clean_split_dir, config_path, output_dir,
         scaler_full = None
         print("- Nessuna colonna da scalare trovata")
     
-    # === FASE 5: RICOMBINAZIONE E SALVATAGGIO ===
     print(f"\n=== FASE 5: RICOMBINAZIONE E SALVATAGGIO ===")
     
-    # Ricombina features processate e target
     df_train_final = X_train_scaled.copy()
     df_train_final['multiclass_target'] = y_train.values
     
@@ -257,10 +237,8 @@ def preprocess_dataset_multiclass(clean_split_dir, config_path, output_dir,
     df_test_final = X_test_scaled.copy()
     df_test_final['multiclass_target'] = y_test.values
     
-    # Crea directory output
     os.makedirs(output_dir, exist_ok=True)
     
-    # Salva dataset processati per MLP
     train_mlp_path = os.path.join(output_dir, "train_multiclass.csv")
     val_mlp_path = os.path.join(output_dir, "val_multiclass.csv")
     test_mlp_path = os.path.join(output_dir, "test_multiclass.csv")
@@ -274,10 +252,8 @@ def preprocess_dataset_multiclass(clean_split_dir, config_path, output_dir,
     print(f"- Validation: {val_mlp_path} ({df_val_final.shape[0]:,} righe)")
     print(f"- Test: {test_mlp_path} ({df_test_final.shape[0]:,} righe)")
     
-    # === FASE 6: SALVATAGGIO METADATI E OGGETTI ===
     print(f"\n=== FASE 6: SALVATAGGIO METADATI E OGGETTI ===")
     
-    # Salva metadati MLP
     mlp_metadata = {
         'architecture': 'MLP',
         'label_encoder_classes': label_encoder.classes_.tolist(),
@@ -306,12 +282,10 @@ def preprocess_dataset_multiclass(clean_split_dir, config_path, output_dir,
         'timestamp': pd.Timestamp.now().isoformat()
     }
     
-    # Salva metadati
     metadata_path = os.path.join(output_dir, "mlp_multiclass_metadata.json")
     with open(metadata_path, 'w') as f:
         json.dump(mlp_metadata, f, indent=2)
     
-    # Salva mappings
     mappings_path = os.path.join(output_dir, "mlp_multiclass_mappings.json")
     mappings_data = {
         'freq_mappings': freq_mappings,
@@ -323,7 +297,6 @@ def preprocess_dataset_multiclass(clean_split_dir, config_path, output_dir,
     with open(mappings_path, 'w') as f:
         json.dump(mappings_data, f, indent=2)
     
-    # Salva oggetti di preprocessing
     if scaler_full is not None:
         scaler_path = os.path.join(output_dir, "mlp_multiclass_scaler.pkl")
         with open(scaler_path, 'wb') as f:
@@ -338,10 +311,8 @@ def preprocess_dataset_multiclass(clean_split_dir, config_path, output_dir,
     print(f"- Mappings: {mappings_path}")
     print(f"- Label encoder: {encoder_path}")
     
-    # === STATISTICHE FINALI ===
     print(f"\n=== STATISTICHE FINALI MLP ===")
     
-    # Analizza distribuzione per ogni set
     for set_name, dataset in [("Training", df_train_final), ("Validation", df_val_final), ("Test", df_test_final)]:
         analyze_processed_distribution(dataset, label_encoder, set_name)
     

@@ -9,15 +9,13 @@ from torch.utils.data import DataLoader, TensorDataset
 from sklearn.utils.class_weight import compute_class_weight
 import torch.nn.functional as F
 
-# Setup logging
 setup_logging()
 logger = logging.getLogger(__name__)
 
 
 class NetworkTrafficMLPMulticlass(nn.Module):
-    """
-    Multi-Layer Perceptron per classificazione MULTICLASS di traffico di rete
-    """
+    """Multi-Layer Perceptron structure
+    task: multiclass classification"""
     def __init__(self, input_dim, config, n_classes, class_weights=None):
         super(NetworkTrafficMLPMulticlass, self).__init__()
         
@@ -27,22 +25,18 @@ class NetworkTrafficMLPMulticlass(nn.Module):
         self.num_layers = config['num_layers']
         self.dropout = config['dropout']
         
-        # Input validation
         if self.num_layers < 2:
             raise ValueError("num_layers deve essere almeno 2 (input + output)")
         if self.n_classes < 2:
             raise ValueError("n_classes deve essere almeno 2")
         
-        # Lista per memorizzare i layer
         layers = []
         
-        # Primo layer: input -> hidden_dim
         layers.append(nn.Linear(input_dim, self.hidden_dim))
         layers.append(nn.ReLU())
         layers.append(nn.BatchNorm1d(self.hidden_dim))
         layers.append(nn.Dropout(self.dropout))
         
-        # Layer intermedi: hidden_dim -> hidden_dim decrescente
         prev_hidden_dim = self.hidden_dim
         for i in range(self.num_layers - 2):
             next_hidden_dim = max(self.hidden_dim // (2 ** (i + 1)), 32)
@@ -54,20 +48,15 @@ class NetworkTrafficMLPMulticlass(nn.Module):
             
             prev_hidden_dim = next_hidden_dim
         
-        # Layer finale: ultimo_hidden -> n_classes
         final_input_dim = prev_hidden_dim if self.num_layers > 2 else self.hidden_dim
         layers.append(nn.Linear(final_input_dim, self.n_classes))
         
-        # Combina tutti i layer
         self.network = nn.Sequential(*layers)
         
-        # Inizializzazione dei pesi
         self.apply(self._init_weights)
         
-        # Salva class weights per riferimento
         self.class_weights = class_weights
         
-        # Log informazioni modello
         total_params = sum(p.numel() for p in self.parameters())
         logger.info(f"Modello MULTICLASS creato:")
         logger.info(f"  Parametri totali: {total_params:,}")
@@ -76,7 +65,6 @@ class NetworkTrafficMLPMulticlass(nn.Module):
         logger.info(f"  Layers: {self.num_layers}")
     
     def _init_weights(self, module):
-        """Inizializzazione dei pesi Xavier"""
         if isinstance(module, nn.Linear):
             torch.nn.init.xavier_uniform_(module.weight)
             if module.bias is not None:
@@ -86,20 +74,16 @@ class NetworkTrafficMLPMulticlass(nn.Module):
             torch.nn.init.zeros_(module.bias)
     
     def forward(self, x):
-        """Forward pass"""
         return self.network(x)
 
 
 class NetworkTrafficDatasetMulticlass:
-    """Classe per gestire il caricamento dati MULTICLASS"""
-    
     def __init__(self, config_path="config/dataset.json", hyperparams_path="config/hyperparameters.json", 
                  model_size="small", metadata_path="resources/datasets/mlp_multiclass_metadata.json"):
         self.metadata_path = metadata_path
         self.load_configs(config_path, hyperparams_path, model_size)
         
     def load_configs(self, config_path, hyperparams_path, model_size="small"):
-        """Carica le configurazioni"""
         try:
             with open(config_path, 'r') as f:
                 self.dataset_config = json.load(f)['dataset']
@@ -122,7 +106,6 @@ class NetworkTrafficDatasetMulticlass:
                 'dropout': 0.3
             }
         
-        # Carica metadati multiclass
         with open(self.metadata_path, 'r') as f:
             self.multiclass_metadata = json.load(f)
             
@@ -148,7 +131,6 @@ class NetworkTrafficDatasetMulticlass:
             percentage = (count / total) * 100
             logger.info(f"  {class_name} ({class_idx}): {count:,} ({percentage:.2f}%)")
         
-        # Controlla solo feature numeriche per problemi
         numeric_features = []
         problematic_features = []
         
@@ -157,11 +139,9 @@ class NetworkTrafficDatasetMulticlass:
                 if pd.api.types.is_numeric_dtype(df[col]):
                     numeric_features.append(col)
                     
-                    # Controlla NaN
                     if df[col].isnull().any():
                         problematic_features.append(f"{col} (NaN)")
                     
-                    # Controlla infiniti
                     if np.isinf(df[col]).any():
                         problematic_features.append(f"{col} (Inf)")
                 else:
@@ -170,17 +150,15 @@ class NetworkTrafficDatasetMulticlass:
                 problematic_features.append(f"{col} (missing)")
         
         if problematic_features:
-            logger.warning(f"âš ï¸  {set_name} - Feature problematiche: {problematic_features[:5]}...")
+            logger.warning(f"{set_name} - Feature problematiche: {problematic_features[:5]}...")
         else:
-            logger.info(f"✅ {set_name} - Tutte le feature sono valide")
+            logger.info(f"{set_name} - Tutte le feature sono valide")
         
         return target_values
     
     def load_data(self, train_path, val_path, test_path):
-        """Carica i dataset preprocessati multiclass"""
         logger.info("Caricamento dataset multiclass...")
         
-        # Carica i CSV
         self.df_train = pd.read_csv(train_path)
         self.df_val = pd.read_csv(val_path)
         self.df_test = pd.read_csv(test_path)
@@ -190,12 +168,10 @@ class NetworkTrafficDatasetMulticlass:
         logger.info(f"  Validation: {self.df_val.shape}")
         logger.info(f"  Test: {self.df_test.shape}")
         
-        # Analizza distribuzione
         train_dist = self.analyze_data_distribution_multiclass(self.df_train, "Training")
         val_dist = self.analyze_data_distribution_multiclass(self.df_val, "Validation")
         test_dist = self.analyze_data_distribution_multiclass(self.df_test, "Test")
         
-        # Verifica feature - VERSIONE MIGLIORATA
         missing_features = []
         invalid_features = []
         
@@ -212,7 +188,6 @@ class NetworkTrafficDatasetMulticlass:
             logger.warning(f"Feature non-numeriche rimosse: {invalid_features}")
             self.feature_columns = [f for f in self.feature_columns if f not in invalid_features]
         
-        # Estrai features e target
         self.X_train = self.df_train[self.feature_columns].values.astype(np.float32)
         self.X_val = self.df_val[self.feature_columns].values.astype(np.float32)
         self.X_test = self.df_test[self.feature_columns].values.astype(np.float32)
@@ -221,7 +196,6 @@ class NetworkTrafficDatasetMulticlass:
         self.y_val = self.df_val[self.target_column].astype(np.int64)
         self.y_test = self.df_test[self.target_column].astype(np.int64)
         
-        # Verifica range target
         all_targets = np.concatenate([self.y_train, self.y_val, self.y_test])
         min_target, max_target = all_targets.min(), all_targets.max()
         
@@ -230,19 +204,17 @@ class NetworkTrafficDatasetMulticlass:
         if min_target < 0 or max_target >= self.n_classes:
             raise ValueError(f"Target fuori range! Trovato: {min_target}-{max_target}, Atteso: 0-{self.n_classes-1}")
         
-        # Verifica presenza di tutte le classi nel training
         unique_train_classes = set(self.y_train)
         expected_classes = set(range(self.n_classes))
         missing_classes = expected_classes - unique_train_classes
         
         if missing_classes:
-            logger.error(f"ðŸš¨ Classi mancanti nel training set: {missing_classes}")
+            logger.error(f"Classi mancanti nel training set: {missing_classes}")
             for missing_class in missing_classes:
                 class_name = self.multiclass_metadata['label_encoder_classes'][missing_class]
                 logger.error(f"   Mancante: {class_name} (ID: {missing_class})")
             raise ValueError("Il training set deve contenere tutte le classi!")
         
-        # Calcola class weights standard (per compatibilità )
         try:
             class_weights = compute_class_weight(
                 'balanced',
@@ -255,14 +227,12 @@ class NetworkTrafficDatasetMulticlass:
             logger.warning(f"Impossibile calcolare class weights: {e}")
             self.class_weights = None
         
-        # Calcola frequenze per funzione di Loss - PUO SERVIRE PER UPGRADARE LA LOSS
         self.class_freq = {}
         unique, counts = np.unique(self.y_train, return_counts=True)
         for class_id, count in zip(unique, counts):
             self.class_freq[class_id] = int(count)
         logger.info(f"Frequenze classi per Loss Function: {self.class_freq}")
         
-        #self.class_freq = None
         logger.info(f"Input dimension: {self.X_train.shape[1]}")
         
         return self.X_train.shape[1]
@@ -272,7 +242,6 @@ class NetworkTrafficDatasetMulticlass:
         batch_size = self.hyperparams['batch_size']
         use_cuda = torch.cuda.is_available()
         
-        # Crea TensorDataset
         train_dataset = TensorDataset(
             torch.FloatTensor(self.X_train),
             torch.LongTensor(self.y_train)
@@ -328,7 +297,7 @@ def save_model_multiclass(model, hyperparams, feature_columns, filepath,
         'n_classes': n_classes,
         'class_mapping': class_mapping,
         'class_weights': class_weights,
-        'class_freq': class_freq,  # NUOVO: salva anche frequenze
+        'class_freq': class_freq,
         'model_type': 'multiclass'
     }, filepath)
     logger.info(f"Modello multiclass salvato in: {filepath}")
@@ -339,7 +308,7 @@ def load_model_multiclass(filepath, device='cpu'):
     checkpoint = torch.load(filepath, map_location=device)
     
     if checkpoint.get('model_type') != 'multiclass':
-        logger.warning("🚨  Questo non sembra essere un modello multiclass!")
+        logger.warning("Questo non sembra essere un modello multiclass!")
     
     model = NetworkTrafficMLPMulticlass(
         checkpoint['input_dim'], 

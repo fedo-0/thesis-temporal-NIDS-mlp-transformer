@@ -13,7 +13,6 @@ from datetime import datetime
 from utilities.logging_config import setup_logging
 from model.model_transformer import NetworkTrafficTransformer, NetworkTrafficDatasetTransformer
 
-# Setup logging
 setup_logging()
 logger = logging.getLogger(__name__)
 
@@ -28,7 +27,6 @@ class ModelTrainerTransformer:
         self.class_names = class_names
         self.dataset_manager = dataset_manager
 
-        # Tracking delle metriche
         self.train_losses = []
         self.val_losses = []
         self.val_precisions = []
@@ -39,7 +37,6 @@ class ModelTrainerTransformer:
         self.last_val_predictions = None
         self.last_val_targets = None
         
-        # Optimizer con learning rate più basso per Transformer
         self.optimizer = optim.AdamW(
             model.parameters(),
             lr=hyperparams['lr'],
@@ -48,7 +45,6 @@ class ModelTrainerTransformer:
             eps=1e-8
         )
         
-        # Loss function
         if class_weights is not None:
             self.criterion = nn.CrossEntropyLoss(weight=class_weights.to(device))
             logger.info("✅ Usando CrossEntropyLoss con class weights")
@@ -56,7 +52,6 @@ class ModelTrainerTransformer:
             self.criterion = nn.CrossEntropyLoss()
             logger.info("Usando CrossEntropyLoss standard")
         
-        # Scheduler più appropriato per Transformer
         self.scheduler = optim.lr_scheduler.ReduceLROnPlateau(
             self.optimizer, mode='min', factor=0.7, patience=8, min_lr=1e-6
         )
@@ -81,7 +76,6 @@ class ModelTrainerTransformer:
         correct = 0
         total = 0
         
-        # Contatori per classe
         class_correct = np.zeros(self.n_classes)
         class_total = np.zeros(self.n_classes)
         class_predicted = np.zeros(self.n_classes)
@@ -93,40 +87,33 @@ class ModelTrainerTransformer:
         progress_bar = tqdm(train_loader, desc=f"Training Epoch {epoch}")
         
         for batch_idx, (batch_sequences, batch_targets) in enumerate(progress_bar):
-            batch_sequences = batch_sequences.to(self.device)  # (batch_size, seq_len, features)
-            batch_targets = batch_targets.to(self.device)      # (batch_size,)
+            batch_sequences = batch_sequences.to(self.device)
+            batch_targets = batch_targets.to(self.device)
             
             if batch_idx == 0:
                 unique_classes, counts = torch.unique(batch_targets, return_counts=True)
                 logger.info(f"Primo batch epoca {epoch}: classi {unique_classes.cpu().numpy()} con counts {counts.cpu().numpy()}")
             
-            # Aggiunta rumore (se configurato)
             if 'noise_factor' in self.hyperparams:
                 batch_sequences = self.add_noise_to_sequences(batch_sequences, self.hyperparams['noise_factor'])
             
-            # Separa features numeriche e categoriche
             numeric_features, categorical_features = self.dataset_manager.separate_features(batch_sequences)
             
-            # Forward pass
             self.optimizer.zero_grad()
             outputs = self.model(numeric_features, categorical_features)
             loss = self.criterion(outputs, batch_targets)
             
-            # Backward pass
             loss.backward()
             
-            # Gradient clipping più aggressivo per Transformer
             torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=0.5)
             
             self.optimizer.step()
             
-            # Statistiche
             total_loss += loss.item()
             _, predicted = torch.max(outputs.data, 1)
             total += batch_targets.size(0)
             correct += (predicted == batch_targets).sum().item()
             
-            # Statistiche per classe
             for class_idx in range(self.n_classes):
                 class_mask = (batch_targets == class_idx)
                 class_total[class_idx] += class_mask.sum().item()
@@ -161,7 +148,6 @@ class ModelTrainerTransformer:
         avg_loss = total_loss / len(train_loader)
         accuracy = 100. * correct / total
         
-        # Log finale per classe
         logger.info(f"Epoca {epoch} completata - Statistiche temporali per classe:")
         
         class_metrics = []
@@ -185,19 +171,17 @@ class ModelTrainerTransformer:
                     'corretti': int(class_correct[class_idx])
                 })
 
-        # Ordina per F1 (peggiori prima)
         class_metrics.sort(key=lambda x: x['f1'])
 
-        # Mostra classi con F1
         for cls in class_metrics:
             if cls['f1'] < 0.3:
-                emoji = "🔴"  # Critico
+                emoji = "🔴"
             elif cls['f1'] < 0.5:
-                emoji = "🟡"  # Problematico  
+                emoji = "🟡"
             elif cls['f1'] < 0.8:
-                emoji = "🟢"  # Buono
+                emoji = "🟢"
             else:
-                emoji = "✅"  # Ottimo
+                emoji = "✅"
             
             logger.info(f"  {emoji} {cls['name']:15s}: "
                     f"F1={cls['f1']:.3f} | "
@@ -205,7 +189,6 @@ class ModelTrainerTransformer:
                     f"P={cls['precision']:.3f} | "
                     f"Sequenze={cls['visti']:4d}")
 
-        # Calcola F1 macro
         macro_f1 = sum(cls['f1'] for cls in class_metrics) / len(class_metrics)
         critical_count = len([cls for cls in class_metrics if cls['f1'] < 0.2])
         logger.info(f"  📈 F1 Macro: {macro_f1:.3f} | Classi critiche: {critical_count}")
@@ -227,7 +210,6 @@ class ModelTrainerTransformer:
                 batch_sequences = batch_sequences.to(self.device)
                 batch_targets = batch_targets.to(self.device)
                 
-                # Separa features numeriche e categoriche
                 numeric_features, categorical_features = self.dataset_manager.separate_features(batch_sequences)
                 
                 outputs = self.model(numeric_features, categorical_features)
@@ -246,7 +228,6 @@ class ModelTrainerTransformer:
         avg_loss = total_loss / len(val_loader)
         accuracy = 100. * correct / total
         
-        # Debug per validation
         predictions = np.array(all_predictions)
         targets = np.array(all_targets)
         probabilities = np.array(all_probabilities)
@@ -276,30 +257,23 @@ class ModelTrainerTransformer:
             logger.info(f"\n{'='*60}")
             logger.info(f"Epoch {epoch+1}/{epochs}")
             
-            # Salva learning rate corrente
             current_lr = self.optimizer.param_groups[0]['lr']
             self.learning_rates.append(current_lr)
             
-            # Training
             train_loss, train_acc = self.train_epoch(train_loader, epoch+1)
             logger.info(f"Terminata l'epoca: {epoch+1}")
             
-            # Validation
             val_loss, val_acc, val_pred, val_true, val_prob = self.validate(val_loader)
             
-            # Salva l'ultima validazione
             self.last_val_predictions = val_pred
             self.last_val_targets = val_true
 
-            # Scheduler step
             self.scheduler.step(val_loss)
             
-            # Salva metriche
             self.train_losses.append(train_loss)
             self.val_losses.append(val_loss)
             self.val_accuracies.append(val_acc)
             
-            # Calcola metriche multiclass per validation
             precision, recall, f1, _ = precision_recall_fscore_support(
                 val_true, val_pred, average='weighted', zero_division=0
             )
@@ -312,7 +286,6 @@ class ModelTrainerTransformer:
             logger.info(f"Val Precision (weighted): {precision:.4f}, Val Recall (weighted): {recall:.4f}, Val F1 (weighted): {f1:.4f}")
             logger.info(f"Learning Rate: {current_lr:.6f}")
             
-            # Early stopping
             if val_loss < best_val_loss:
                 best_val_loss = val_loss
                 patience_counter = 0
@@ -330,12 +303,10 @@ class ModelTrainerTransformer:
                     logger.info(f"Early stopping dopo {epoch+1} epochs (patience: {patience})")
                     break
         
-        # Carica il miglior modello
         if best_model_state is not None:
             self.model.load_state_dict(best_model_state)
             logger.info("Caricato il miglior modello per la valutazione finale.")
 
-            # Rifai validazione con il miglior modello per avere predizioni corrette
             logger.info("Ricalcolo validazione finale con il miglior modello...")
             val_loss_final, val_acc_final, val_pred_final, val_true_final, val_prob_final = self.validate(val_loader)
             self.last_val_predictions = val_pred_final
@@ -347,12 +318,10 @@ class ModelTrainerTransformer:
 
         from sklearn.metrics import precision_recall_fscore_support, accuracy_score
         
-        # Plot principale con Loss, Accuracy, Precision e Recall
         fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(16, 12))
         
         epochs = range(1, len(self.train_losses) + 1)
         
-        # Loss
         ax1.plot(epochs, self.train_losses, label='Training Loss', color='blue', linewidth=2)
         ax1.plot(epochs, self.val_losses, label='Validation Loss', color='red', linewidth=2)
         ax1.set_title('Transformer Loss (Sequenze Temporali)', fontsize=14, fontweight='bold')
@@ -361,7 +330,6 @@ class ModelTrainerTransformer:
         ax1.legend().show(False)
         ax1.grid(True, alpha=0.3)
         
-        # Accuracy
         ax2.plot(epochs, self.val_accuracies, label='Validation Accuracy', color='green', linewidth=2)
         ax2.set_title('Transformer Accuracy (Sequenze Temporali)', fontsize=14, fontweight='bold')
         ax2.set_xlabel('Epoch')
@@ -369,11 +337,9 @@ class ModelTrainerTransformer:
         ax2.legend().show(False)
         ax2.grid(True, alpha=0.3)
         
-        # Precision e Recall
         precision_history = self.val_precisions if hasattr(self, 'val_precisions') and self.val_precisions else []
         recall_history = self.val_recalls if hasattr(self, 'val_recalls') and self.val_recalls else []
         
-        # Precision
         if precision_history:
             ax3.plot(epochs, precision_history, label='Validation Precision (Weighted)', 
                     color='orange', linewidth=2)
@@ -387,7 +353,6 @@ class ModelTrainerTransformer:
                     transform=ax3.transAxes, ha='center', va='center')
             ax3.set_title('Transformer Precision', fontsize=14, fontweight='bold')
         
-        # Recall
         if recall_history:
             ax4.plot(epochs, recall_history, label='Validation Recall (Weighted)', 
                     color='purple', linewidth=2)
@@ -401,9 +366,7 @@ class ModelTrainerTransformer:
                     transform=ax4.transAxes, ha='center', va='center')
             ax4.set_title('Transformer Recall', fontsize=14, fontweight='bold')
         
-        # Calcola e mostra metriche finali se disponibili
         if val_predictions is not None and val_targets is not None:
-            # Metriche globali
             final_accuracy = accuracy_score(val_targets, val_predictions)
             precision_w, recall_w, f1_w, _ = precision_recall_fscore_support(
                 val_targets, val_predictions, average='weighted', zero_division=0
@@ -412,7 +375,6 @@ class ModelTrainerTransformer:
                 val_targets, val_predictions, average='macro', zero_division=0
             )
             
-            # Aggiungi testo con metriche finali
             metrics_text = (
                 f"Final Validation Metrics (Temporal):\n"
                 f"Accuracy: {final_accuracy:.4f}\n"
@@ -424,7 +386,6 @@ class ModelTrainerTransformer:
                 f"Macro Recall: {recall_m:.4f}"
             )
             
-            # Posiziona il testo nell'area del grafico
             fig.text(0.02, 0.98, metrics_text, fontsize=10, verticalalignment='top',
                     bbox=dict(boxstyle='round', facecolor='lightgreen', alpha=0.8))
             
@@ -442,9 +403,6 @@ class ModelTrainerTransformer:
             plt.savefig(save_path, dpi=300, bbox_inches='tight')
             logger.info(f"Training history plot salvato in: {save_path}")
         
-        #plt.show()
-        
-        # Crea plot separato per metriche per classe se disponibili
         if val_predictions is not None and val_targets is not None:
             self._plot_per_class_metrics(val_predictions, val_targets, save_path)
         else:
@@ -456,30 +414,24 @@ class ModelTrainerTransformer:
         from sklearn.metrics import precision_recall_fscore_support
         import matplotlib.cm as cm
         
-        # Calcola metriche per classe
         precision_per_class, recall_per_class, f1_per_class, support_per_class = precision_recall_fscore_support(
             val_targets, val_predictions, average=None, zero_division=0
         )
         
-        # Calcola F1 weighted per "aggregated"
         _, _, f1_weighted, _ = precision_recall_fscore_support(
             val_targets, val_predictions, average='weighted', zero_division=0
         )
         
-        # Crea figure con layout 2x2
         fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(16, 12))
         
         x_pos = np.arange(len(self.class_names))
         
-        # F1 Score per classe con colori diversi + aggregated
         colors = cm.Set3(np.linspace(0, 1, len(self.class_names)))
 
-        # Aggiunge F1 weighted per "aggregated"
         x_pos_agg = np.arange(len(self.class_names) + 1)
         f1_with_agg = np.append(f1_per_class, f1_weighted)
         class_names_with_agg = list(self.class_names) + ['Aggregated']
         
-        # Colori: classi normali + grigio per aggregated
         colors_agg = np.vstack([colors, [0.5, 0.5, 0.5, 1.0]])
         
         bars1 = ax1.bar(x_pos_agg, f1_with_agg, color=colors_agg, alpha=1.0)
@@ -491,7 +443,6 @@ class ModelTrainerTransformer:
         ax1.grid(True, alpha=0.3)
         ax1.set_ylim(0, 1)
          
-        # Precision per classe
         bars2 = ax2.bar(x_pos, precision_per_class, color=colors, alpha=1.0)
         ax2.set_title('Precision per Classe (Transformer)', fontsize=14, fontweight='bold')
         ax2.set_xlabel('Classi')
@@ -501,7 +452,6 @@ class ModelTrainerTransformer:
         ax2.grid(True, alpha=0.3)
         ax2.set_ylim(0, 1)
         
-        # Recall per classe
         bars3 = ax3.bar(x_pos, recall_per_class, color=colors, alpha=1.0)
         ax3.set_title('Recall per Classe (Transformer)', fontsize=14, fontweight='bold')
         ax3.set_xlabel('Classi')
@@ -511,7 +461,6 @@ class ModelTrainerTransformer:
         ax3.grid(True, alpha=0.3)
         ax3.set_ylim(0, 1)
         
-        # Support (numero sequenze) per classe
         bars4 = ax4.bar(x_pos, support_per_class, color=colors, alpha=1.0)
         ax4.set_title('Support per Classe (Numero Sequenze)', fontsize=14, fontweight='bold')
         ax4.set_xlabel('Classi')
@@ -522,20 +471,15 @@ class ModelTrainerTransformer:
         
         plt.tight_layout()
         
-        # Salva il plot per classe se specificato
         if base_save_path:
             per_class_save_path = base_save_path.replace('.png', '_per_class_metrics.png')
             plt.savefig(per_class_save_path, dpi=300, bbox_inches='tight')
             logger.info(f"Per-class metrics plot salvato in: {per_class_save_path}")
         
-        #plt.show()
-        
-        # Log delle metriche per classe
         logger.info("\n" + "="*70)
         logger.info("METRICHE PER CLASSE TRANSFORMER TEMPORALE (VALIDATION)")
         logger.info("="*70)
         
-        # Crea una tabella ordinata per F1
         class_metrics_data = []
         for i, class_name in enumerate(self.class_names):
             class_metrics_data.append({
@@ -546,7 +490,6 @@ class ModelTrainerTransformer:
                 'support': support_per_class[i]
             })
         
-        # Aggiungi metriche aggregate
         class_metrics_data.append({
             'name': 'AGGREGATED (Weighted)',
             'f1': f1_weighted,
@@ -555,7 +498,6 @@ class ModelTrainerTransformer:
             'support': len(val_targets)
         })
         
-        # Ordina per F1 (peggiori prima, ma aggregated sempre ultimo)
         class_metrics_individual = [x for x in class_metrics_data if 'AGGREGATED' not in x['name']]
         class_metrics_individual.sort(key=lambda x: x['f1'])
         class_metrics_aggregated = [x for x in class_metrics_data if 'AGGREGATED' in x['name']]
@@ -596,7 +538,6 @@ def evaluate_model_transformer(model, test_loader, device, class_names, dataset_
             batch_sequences = batch_sequences.to(device)
             batch_targets = batch_targets.to(device)
             
-            # Separa features numeriche e categoriche
             numeric_features, categorical_features = dataset_manager.separate_features(batch_sequences)
             
             outputs = model(numeric_features, categorical_features)
@@ -607,14 +548,12 @@ def evaluate_model_transformer(model, test_loader, device, class_names, dataset_
             all_targets.extend(batch_targets.cpu().numpy())
             all_probabilities.extend(probabilities.cpu().numpy())
     
-    # Calcola metriche multiclass
     predictions = np.array(all_predictions)
     targets = np.array(all_targets)
     probabilities = np.array(all_probabilities)
     
     accuracy = accuracy_score(targets, predictions)
     
-    # Metriche per classe e medie
     precision_per_class, recall_per_class, f1_per_class, _ = precision_recall_fscore_support(
         targets, predictions, average=None, zero_division=0
     )
@@ -636,14 +575,11 @@ def evaluate_model_transformer(model, test_loader, device, class_names, dataset_
     logger.info(f"Macro Recall: {recall_macro:.4f}")
     logger.info(f"Macro F1-Score: {f1_macro:.4f}")
     
-    # Classification report dettagliato
     logger.info(f"\nClassification Report (Temporal Sequences):")
     print(classification_report(targets, predictions, target_names=class_names, zero_division=0))
     
-    # Confusion Matrix
     cm = confusion_matrix(targets, predictions)
     
-    # Plot confusion matrix
     plt.figure(figsize=(12, 10))
     sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', 
                 xticklabels=class_names, 
@@ -654,7 +590,6 @@ def evaluate_model_transformer(model, test_loader, device, class_names, dataset_
     plt.xticks(rotation=45)
     plt.yticks(rotation=0)
     
-    # Aggiungi percentuali
     cm_percent = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
     for i in range(cm.shape[0]):
         for j in range(cm.shape[1]):
@@ -663,7 +598,6 @@ def evaluate_model_transformer(model, test_loader, device, class_names, dataset_
                         ha='center', va='center', fontsize=8, color='red')
     
     plt.tight_layout()
-    #plt.show()
     
     return accuracy, precision_weighted, recall_weighted, f1_weighted, predictions, targets, probabilities
 
@@ -692,7 +626,6 @@ def main_pipeline_transformer(model_size="small", window_size=8):
             window_size=window_size, seed=42
         )
         
-        # Modello Transformer
         model = NetworkTrafficTransformer(
             dataset_manager.hyperparams,
             dataset_manager.n_classes,
@@ -701,7 +634,6 @@ def main_pipeline_transformer(model_size="small", window_size=8):
         )
 
         
-        # Trainer
         class_names = dataset_manager.temporal_metadata['label_encoder_classes']
         trainer = ModelTrainerTransformer(
             model, 
@@ -713,21 +645,17 @@ def main_pipeline_transformer(model_size="small", window_size=8):
             class_weights=dataset_manager.class_weights
         )
         
-        # Training con patience maggiore per Transformer
         trained_model = trainer.train(train_loader, val_loader, epochs=100, patience=10)
         
-        # Plot training history
         import os
         os.makedirs("plots", exist_ok=True)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         trainer.plot_training_history(f'plots/transformer_training_history_{timestamp}.png')
         
-        # Evaluation
         accuracy, precision, recall, f1, predictions, targets, probabilities = evaluate_model_transformer(
             trained_model, test_loader, device, class_names, dataset_manager
         )
         
-        # Salvataggio modello
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         model_path = f"models/transformer_{timestamp}.pth"
         os.makedirs("models", exist_ok=True)
